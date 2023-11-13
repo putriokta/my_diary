@@ -12,10 +12,11 @@ class SignUp extends StatefulWidget {
 }
 
 class _SignUpState extends State<SignUp> {
-  final _formKey = GlobalKey<FormState>(); //mengelola status Form. Ini akan digunakan untuk memeriksa dan mengvalidasi masukan pengguna
+  final _formKey = GlobalKey<FormState>();
   bool isLoading = false;
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
+  bool _obscureText = true; // Tambahkan variabel ini
 
   createUserWithEmailAndPassword() async {
     try {
@@ -34,15 +35,15 @@ class _SignUpState extends State<SignUp> {
         isLoading = false;
       });
       if (e.code == 'weak-password') {
-        return ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("The password provided is too weak."),
+            content: Text("Password yang diberikan terlalu lemah."),
           ),
         );
       } else if (e.code == 'email-already-in-use') {
-        return ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("The account already exists for that email."),
+            content: Text("Akun sudah ada untuk email tersebut."),
           ),
         );
       }
@@ -65,74 +66,89 @@ class _SignUpState extends State<SignUp> {
       ),
       body: Center(
         child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column( 
-            children: [
-              const SizedBox(height: 30),
-              Image.asset(
-                'images/mydiary.png', 
-                height: 150, 
-              ),
-              const SizedBox(height: 30), 
-              Form(
-                key: _formKey,
-                child: OverflowBar(
-                  overflowSpacing: 20,
-                  children: [
-                    TextFormField(
-                      controller: _email,
-                      validator: (text) {
-                        if (text == null || text.isEmpty) {
-                          return 'Email tidak ditemukan!';
-                        }
-                        return null;
-                      },
-                      decoration: const InputDecoration(labelText: "Email"),
-                    ),
-                    TextFormField(
-                      controller: _password,
-                      validator: (text) {
-                        if (text == null || text.isEmpty) {
-                          return 'Password tidak ditemukan!';
-                        }
-                        return null;
-                      },
-                      decoration: const InputDecoration(labelText: "Password"),
-                    ),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 45,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          if (_formKey.currentState!.validate()) {
-                            createUserWithEmailAndPassword();
-                          }
-                        },
-                        child: isLoading
-                            ? const Center(
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text("Daftar"),
-                      ),
-                    ),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 45,
-                      child: ElevatedButton(
-                        onPressed: widget.onPressed,
-                        child: const Text("Masuk"),
-                      ),
-                    ),
-                  ],
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              children: [
+                const SizedBox(height: 30),
+                Image.asset(
+                  'images/mydiary.png',
+                  height: 150,
                 ),
-              ),
-            ],
-         ),
-       ),
-     ),
+                const SizedBox(height: 30),
+                Form(
+                  key: _formKey,
+                  child: OverflowBar(
+                    overflowSpacing: 20,
+                    children: [
+                      TextFormField(
+                        controller: _email,
+                        validator: (text) {
+                          if (text == null || text.isEmpty) {
+                            return 'Email tidak ditemukan!';
+                          }
+                          return null;
+                        },
+                        decoration: const InputDecoration(labelText: "Email"),
+                      ),
+                      TextFormField(
+                        controller: _password,
+                        obscureText: _obscureText,
+                        validator: (text) {
+                          if (text == null || text.isEmpty) {
+                            return 'Password tidak ditemukan!';
+                          }
+                          return null;
+                        },
+                        decoration: InputDecoration(
+                          labelText: "Password",
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureText
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscureText = !_obscureText;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 45,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            if (_formKey.currentState!.validate()) {
+                              createUserWithEmailAndPassword();
+                            }
+                          },
+                          child: isLoading
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text("Daftar"),
+                        ),
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 45,
+                        child: ElevatedButton(
+                          onPressed: widget.onPressed,
+                          child: const Text("Masuk"),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

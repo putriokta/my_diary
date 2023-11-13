@@ -1,3 +1,7 @@
+// ignore_for_file: use_build_context_synchronously, avoid_function_literals_in_foreach_calls
+
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -20,19 +24,45 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final user = FirebaseAuth.instance.currentUser;
   List<Note> notes = [];
+  StreamSubscription<QuerySnapshot>? _notesSubscription;
 
   @override
   void initState() {
     super.initState();
+    _setUpNotesListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _setUpNotesListener();
+  }
+
+  void _setUpNotesListener() {
     final notesCollection = FirebaseFirestore.instance.collection('notes');
-    // Dapatkan ID pengguna yang saat ini masuk
     final userId = FirebaseAuth.instance.currentUser?.uid;
-    print(userId);
-    final docRef = notesCollection.doc(userId);
-    docRef.get().then((DocumentSnapshot doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      // print(data);
-    });
+
+    if (userId != null) {
+      _notesSubscription?.cancel();
+      _notesSubscription = notesCollection
+          .doc(userId)
+          .collection("note_user")
+          .snapshots()
+          .listen((snapshot) {
+        List<Note> newNotes = [];
+        for (var doc in snapshot.docs) {
+          newNotes.add(Note(
+            title: doc['title'],
+            content: doc['content'],
+            time: doc['time'],
+            id: doc.id,
+          ));
+        }
+        setState(() {
+          notes = newNotes;
+        });
+      });
+    }
   }
 
   @override
@@ -64,7 +94,7 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Selamat Datang ",
+              "Halo, Selamat Datang :)",
               style: GoogleFonts.roboto(
                 color: Colors.black,
                 fontWeight: FontWeight.bold,
@@ -94,14 +124,22 @@ class _HomePageState extends State<HomePage> {
                         ),
                       );
                     },
-                    onDelete: () {
-                      // Tambahkan logika penghapusan catatan di sini
-                      setState(() {
-                        notes.remove(note);
-                      });
+                    onDelete: () async {
+                       final userId = FirebaseAuth.instance.currentUser?.uid;
+                      if (userId != null && note.id != null) {
+                        await FirebaseFirestore.instance
+                          .collection('notes')
+                          .doc(userId)
+                          .collection("note_user")
+                          .doc(note.id)
+                          .delete();
+
+                        setState(() {
+                          notes.remove(note);
+                        });
+                      }
                     },
                     onEdit: () {
-                      // Tambahkan logika edit catatan di sini
                       _editNoteDialog(note);
                     },
                   );
@@ -131,24 +169,28 @@ class _HomePageState extends State<HomePage> {
       builder: (context) {
         return AlertDialog(
           title: const Text("Tambah Catatan Baru"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: "Judul",
+          content: SizedBox(
+            width: 300,
+            height : 150,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      labelText: "Judul",
+                    ),
                   ),
-                ),
-                TextField(
-                  controller: contentController,
-                  maxLines: null,
-                  decoration: const InputDecoration(
-                    labelText: "Isi Catatan",
+                  TextField(
+                    controller: contentController,
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      labelText: "Isi Catatan",
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -159,27 +201,36 @@ class _HomePageState extends State<HomePage> {
                 final time = DateTime.now().toString();
 
                 if (title.isNotEmpty && content.isNotEmpty) {
-                  // Dapatkan referensi Firestore untuk koleksi catatan
                   final notesCollection =
                       FirebaseFirestore.instance.collection('notes');
-                  // Dapatkan ID pengguna yang saat ini masuk
                   final userId = FirebaseAuth.instance.currentUser?.uid;
                   if (userId != null) {
-                    // Simpan catatan ke Firestore
-                    await notesCollection.doc(userId).collection("note_user").add({
-                      'title': title,
-                      'content': content,
-                      'time': time,
-                      'userId': userId,
-                    });
+                    final newNoteRef = await notesCollection
+                        .doc(userId)
+                        .collection("note_user")
+                        .add({
+                          'title': title,
+                          'content': content,
+                          'time': time,
+                        });
+
+                    final newNoteId = newNoteRef.id;
+
                     setState(() {
                       notes.add(
-                          Note(title: title, content: content, time: time));
+                        Note(
+                          title: title,
+                          content: content,
+                          time: time,
+                          id: newNoteId,
+                        ),
+                      );
                     });
                     titleController.clear();
                     contentController.clear();
-                    // ignore: use_build_context_synchronously
                     Navigator.of(context).pop();
+
+                    _setUpNotesListener(); // Panggil kembali _listener_
                   }
                 }
               },
@@ -199,99 +250,109 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _editNoteDialog(Note note) async {
-    final TextEditingController titleController = TextEditingController();
-    final TextEditingController contentController = TextEditingController();
+Future<void> _editNoteDialog(Note note) async {
+  final TextEditingController titleController = TextEditingController();
+  final TextEditingController contentController = TextEditingController();
 
-    titleController.text = note.title;
-    contentController.text = note.content;
+  titleController.text = note.title;
+  contentController.text = note.content;
 
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Edit Catatan"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: "Judul",
+  await showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text("Edit Catatan"),
+        content: SizedBox(
+            width: 300,
+            height : 150,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      labelText: "Judul",
+                    ),
                   ),
-                ),
-                TextField(
-                  controller: contentController,
-                  maxLines: null,
-                  decoration: const InputDecoration(
-                    labelText: "Isi Catatan",
+                  TextField(
+                    controller: contentController,
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      labelText: "Isi Catatan",
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final newTitle = titleController.text;
+              final newContent = contentController.text;
+              final newTime = DateTime.now().toString();
+
+              if (newTitle.isNotEmpty && newContent.isNotEmpty) {
+                final userId = FirebaseAuth.instance.currentUser?.uid;
+
+                if (userId != null) {
+                  // Perbarui catatan di Firestore berdasarkan ID catatan
+                  await FirebaseFirestore.instance
+                      .collection('notes')
+                      .doc(userId)
+                      .collection("note_user")
+                      .doc(note.id!) // Gunakan note.id di sini
+                      .update({
+                        'title': newTitle,
+                        'content': newContent,
+                        'time': newTime,
+                      });
+
+                  setState(() {
+                    note.title = newTitle;
+                    note.content = newContent;
+                    note.time = newTime;
+                  });
+
+                  titleController.clear();
+                  contentController.clear();
+                  Navigator.of(context).pop();
+                }
+              }
+            },
+            child: const Text("Simpan"),
           ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                final newTitle = titleController.text;
-                final newContent = contentController.text;
-                final newTime = DateTime.now().toString();
+          TextButton(
+            onPressed: () {
+              titleController.clear();
+              contentController.clear();
+              Navigator.of(context).pop();
+            },
+            child: const Text("Batal"),
+          ),
+        ],
+      );
+    },
+  );
+}
 
-                if (newTitle.isNotEmpty && newContent.isNotEmpty) {
-                  // Dapatkan referensi Firestore untuk koleksi catatan
-                  final notesCollection =
-                      FirebaseFirestore.instance.collection('notes');
-                  // Dapatkan ID pengguna yang saat ini masuk
-                  final userId = FirebaseAuth.instance.currentUser?.uid;
-                  if (userId != null) {
-                    // Perbarui catatan di Firestore berdasarkan ID catatan
-                    await notesCollection.doc(note.id).update({
-                      'title': newTitle,
-                      'content': newContent,
-                      'time': newTime,
-                    });
-                    setState(() {
-                      note.title = newTitle;
-                      note.content = newContent;
-                      note.time = newTime;
-                    });
-                    titleController.clear();
-                    contentController.clear();
-                    // ignore: use_build_context_synchronously
-                    Navigator.of(context).pop();
-                  }
-                }
-              },
-              child: const Text("Simpan"),
-            ),
-            TextButton(
-              onPressed: () {
-                titleController.clear();
-                contentController.clear();
-                Navigator.of(context).pop();
-              },
-              child: const Text("Batal"),
-            ),
-          ],
-        );
-      },
-    );
-  }
 }
 
 class Note {
   String title;
   String content;
   String time;
+  String? id;
 
   Note({
     required this.title,
     required this.content,
     required this.time,
+    required this.id,
   });
 
-  String? get id => null;
+  // String? get id => null;
 }
 
 class NoteCard extends StatelessWidget {
